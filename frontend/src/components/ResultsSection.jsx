@@ -8,7 +8,7 @@ const ResultsSection = ({ showResults, loading, results }) => {
   return (
     <Box sx={{ mt: 5, pt: 4, borderTop: "2px solid #ecf0f1" }}>
       <Typography variant="h5" sx={{ color: "#2c3e50", mb: 3 }}>
-        Fact-Check Results
+        Checked Claims
       </Typography>
       {loading && (
         <Box sx={{ textAlign: "center", py: 5, color: "#7f8c8d" }}>
@@ -27,7 +27,7 @@ const ResultsSection = ({ showResults, loading, results }) => {
               <FactItem key={index} fact={fact} index={index} />
             ))
           ) : (
-            <Typography variant="body1">No fact-checking results found.</Typography>
+            <Typography variant="body1">No checked claims found.</Typography>
           )}
         </Box>
       )}
@@ -38,11 +38,7 @@ const ResultsSection = ({ showResults, loading, results }) => {
 ResultsSection.propTypes = {
   showResults: PropTypes.bool.isRequired,
   loading: PropTypes.bool.isRequired,
-  results: PropTypes.shape({
-    error: PropTypes.string,
-    facts: PropTypes.arrayOf(PropTypes.object),
-    videoId: PropTypes.string,
-  }),
+  results: PropTypes.object,
 };
 
 export default ResultsSection;

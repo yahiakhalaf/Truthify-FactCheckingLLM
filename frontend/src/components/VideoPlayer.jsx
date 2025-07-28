@@ -7,6 +7,7 @@ import FactItem from "./FactItem";
 const VideoPlayer = memo(({ videoId, facts = [], onReady, onStateChange }) => {
   const playerRef = useRef(null);
 
+  // YouTube player options
   const opts = {
     height: "400",
     width: "100%",
@@ -19,14 +20,38 @@ const VideoPlayer = memo(({ videoId, facts = [], onReady, onStateChange }) => {
     },
   };
 
+  // Handle player ready
   const handleReady = (event) => {
     playerRef.current = event.target;
     if (onReady) onReady(event);
   };
 
+  // Handle player state change
   const handleStateChange = (event) => {
     if (onStateChange) onStateChange(event);
   };
+
+  // New: Handle timestamp click
+  const handleTimestampClick = (timestamp) => {
+    if (playerRef.current && playerRef.current.seekTo) {
+      // Assuming timestamp is in seconds (or can be converted)
+      let seconds = timestamp;
+      if (typeof timestamp === 'string') {
+        // Handle [HH:MM:SS] or [MM:SS] format
+        const parts = timestamp.replace(/[\[\]]/g, '').split(':');
+        if (parts.length === 3) { // HH:MM:SS
+          seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+        } else if (parts.length === 2) { // MM:SS
+          seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        } else {
+          // Fallback if format is unexpected, e.g., just seconds as string
+          seconds = parseFloat(timestamp);
+        }
+      }
+      playerRef.current.seekTo(seconds, true); // seekTo(seconds, allowSeekAhead)
+    }
+  };
+
 
   if (!videoId) {
     return (
@@ -40,46 +65,40 @@ const VideoPlayer = memo(({ videoId, facts = [], onReady, onStateChange }) => {
 
   return (
     <Box sx={{ position: "relative", width: "100%", mt: 4 }}>
-      <Box sx={{ borderRadius: "10px", overflow: "hidden", mb: 2 }}>
-        <YouTube
-          videoId={videoId}
-          opts={opts}
-          onReady={handleReady}
-          onStateChange={handleStateChange}
-          style={{ width: "100%" }}
-        />
+      <Box sx={{ borderRadius: "10px", overflow: "hidden" }}>
+        <YouTube videoId={videoId} opts={opts} onReady={handleReady} onStateChange={handleStateChange} />
       </Box>
+
       {facts.length > 0 && (
-        <Box sx={{ mt: 3 }}>
+        <Box sx={{ mt: 3, maxHeight: "400px", overflowY: "auto", pr: 1 }}>
           <Typography variant="h6" sx={{ mb: 2, color: "#2c3e50" }}>
-            Fact Checks
+            Related Claims:
           </Typography>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box className="fact-items-container">
             {facts.map((fact, index) => (
-              <Box key={index}>
+              <Box key={index} sx={{ mb: 2 }}>
                 {fact.timestamp && (
                   <Box
                     sx={{
-                      display: "flex",
+                      mb: 1,
+                      display: "inline-flex",
                       alignItems: "center",
                       gap: 1,
-                      mb: 1,
                       cursor: "pointer",
                       "&:hover .timestamp-chip": {
-                        backgroundColor: "rgba(25, 118, 210, 0.1)",
-                        borderColor: "#1976d2",
+                        backgroundColor: "rgba(52, 152, 219, 0.1)",
+                        borderColor: "#3498db",
                       },
                     }}
-                    onClick={() => {
-                      if (playerRef.current && fact.timestamp) {
-                        const seconds = parseFloat(fact.timestamp.replace(/\[|\]/g, "").split(":")[1]);
-                        playerRef.current.seekTo(seconds, true);
-                      }
-                    }}
+                    onClick={() => handleTimestampClick(fact.timestamp)} // Use new handler
                   >
                     <Chip
                       className="timestamp-chip"
-                      label={fact.timestamp}
+                      label={
+                        typeof fact.timestamp === 'number'
+                          ? `${Math.floor(fact.timestamp / 60)}:${String(Math.floor(fact.timestamp % 60)).padStart(2, "0")}`
+                          : fact.timestamp // If it's already a string like [MM:SS]
+                      }
                       size="small"
                       variant="outlined"
                       sx={{ fontWeight: "bold", transition: "all 0.2s ease" }}
@@ -103,16 +122,19 @@ VideoPlayer.propTypes = {
   videoId: PropTypes.string.isRequired,
   facts: PropTypes.arrayOf(
     PropTypes.shape({
-      timestamp: PropTypes.string,
+      timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), // Allow string or number
       claim: PropTypes.string.isRequired,
       status: PropTypes.string.isRequired,
       explanation: PropTypes.string.isRequired,
-      confidence: PropTypes.number,
+      // Removed confidence from propTypes here if no longer used by the component itself
       sources: PropTypes.arrayOf(
-        PropTypes.shape({
-          title: PropTypes.string.isRequired,
-          url: PropTypes.string.isRequired,
-        })
+        PropTypes.oneOfType([
+          PropTypes.string,
+          PropTypes.shape({
+            title: PropTypes.string.isRequired,
+            url: PropTypes.string.isRequired,
+          }),
+        ])
       ),
     })
   ),
