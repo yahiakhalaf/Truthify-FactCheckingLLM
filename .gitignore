@@ -1,0 +1,16 @@
+# Python
+.python-version
+.venv/
+uv.lock
+
+backend/__pycache__/
+backend/notebooks/
+backend/temp/
+backend/src/__pycache__/
+backend/temp/__pycache__/
+
+frontend/node_modules/
+frontend/package-lock.json
+
+.env
+.env.*
