@@ -20,42 +20,61 @@ const FactItem = ({ fact, index }) => {
     }
   };
 
+  // New: Get color based on status
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case "true":
+      case "verified":
+      case "correct":
+        return "#27ae60"; // Green
+      case "false":
+      case "incorrect":
+      case "misleading":
+        return "#e74c3c"; // Red
+      default:
+        return "#f39c12"; // Yellow (for unverifiable/unknown)
+    }
+  };
+
   return (
     <FactItemCard key={index} status={fact.status?.toLowerCase()}>
       <CardContent>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}> {/* Reduced mb */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
           {getStatusIcon(fact.status)}
-          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}> {/* Added fontWeight */}
-            Claim: {fact.claim || "Claim"} {/* Format claim */}
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
+            Claim: {fact.claim || "Claim"}
           </Typography>
         </Box>
-        <Typography variant="body1" sx={{ mb: 2, color: "#555" }}>
-          Explanation: {fact.explanation || "No explanation provided."} {/* Format explanation */}
+        {/* New: Display Status with color coding */}
+        <Typography
+          variant="body2" // Smaller font size for status
+          sx={{
+            mb: 1, // Margin bottom
+            fontWeight: 600, // Make it bold like claim
+            color: getStatusColor(fact.status), // Apply color based on status
+          }}
+        >
+          Status: {fact.status ? fact.status.charAt(0).toUpperCase() + fact.status.slice(1) : "N/A"}
         </Typography>
 
-        {/* Removed Confidence Display */}
-        {/*
-        {fact.confidence !== undefined && (
-          <Typography variant="body2" sx={{ mb: 2, color: "#666" }}>
-            Confidence: {fact.confidence}%
-          </Typography>
-        )}
-        */}
+        <Typography variant="body1" sx={{ mb: 2, color: "#555" }}>
+          Explanation: {fact.explanation || "No explanation provided."}
+        </Typography>
 
         {fact.sources && fact.sources.length > 0 && (
-          <Box sx={{ mt: 2 }}> {/* Added margin-top */}
+          <Box sx={{ mt: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: "#2c3e50" }}>
               Sources:
             </Typography>
             {fact.sources.map((source, sourceIndex) => (
-              <Box key={sourceIndex} sx={{ mb: 0.5 }}> {/* Box for each source to ensure new line */}
+              <Box key={sourceIndex} sx={{ mb: 0.5 }}>
                 <Link
                   href={source.url || source}
                   target="_blank"
                   rel="noopener noreferrer"
                   underline="hover"
                   sx={{
-                    display: "inline-flex", // Keep chip on one line with icon
+                    display: "inline-flex",
                     alignItems: "center",
                     "&:hover": {
                       textDecoration: "underline",
@@ -95,7 +114,6 @@ FactItem.propTypes = {
     status: PropTypes.string,
     claim: PropTypes.string,
     explanation: PropTypes.string,
-    // confidence: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), // REMOVED
     sources: PropTypes.arrayOf(
       PropTypes.oneOfType([
         PropTypes.string,
@@ -105,7 +123,7 @@ FactItem.propTypes = {
         }),
       ])
     ),
-    timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), // Added for completeness if needed elsewhere
+    timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   }),
   index: PropTypes.number.isRequired,
 };

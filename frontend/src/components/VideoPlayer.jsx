@@ -72,7 +72,7 @@ const VideoPlayer = memo(({ videoId, facts = [], onReady, onStateChange }) => {
       {facts.length > 0 && (
         <Box sx={{ mt: 3, maxHeight: "400px", overflowY: "auto", pr: 1 }}>
           <Typography variant="h6" sx={{ mb: 2, color: "#2c3e50" }}>
-            Related Claims:
+            Checked Claims {/* Renamed from "Related Claims" */}
           </Typography>
           <Box className="fact-items-container">
             {facts.map((fact, index) => (
@@ -90,14 +90,14 @@ const VideoPlayer = memo(({ videoId, facts = [], onReady, onStateChange }) => {
                         borderColor: "#3498db",
                       },
                     }}
-                    onClick={() => handleTimestampClick(fact.timestamp)} // Use new handler
+                    onClick={() => handleTimestampClick(fact.timestamp)}
                   >
                     <Chip
                       className="timestamp-chip"
                       label={
                         typeof fact.timestamp === 'number'
                           ? `${Math.floor(fact.timestamp / 60)}:${String(Math.floor(fact.timestamp % 60)).padStart(2, "0")}`
-                          : fact.timestamp // If it's already a string like [MM:SS]
+                          : fact.timestamp
                       }
                       size="small"
                       variant="outlined"
@@ -122,11 +122,10 @@ VideoPlayer.propTypes = {
   videoId: PropTypes.string.isRequired,
   facts: PropTypes.arrayOf(
     PropTypes.shape({
-      timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), // Allow string or number
+      timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
       claim: PropTypes.string.isRequired,
       status: PropTypes.string.isRequired,
       explanation: PropTypes.string.isRequired,
-      // Removed confidence from propTypes here if no longer used by the component itself
       sources: PropTypes.arrayOf(
         PropTypes.oneOfType([
           PropTypes.string,

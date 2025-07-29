@@ -13,7 +13,7 @@ export const exportResultsToPDF = (results) => {
   const tableData = [];
 
   results.facts.forEach((fact) => {
-    // Format sources as a single string with line breaks
+    // Format sources as a single string with line breaks and a separator
     let sourcesText = "";
     if (fact.sources && fact.sources.length > 0) {
       sourcesText = fact.sources
@@ -23,17 +23,17 @@ export const exportResultsToPDF = (results) => {
           const sourceUrl = source.url && source.url.startsWith("http") ? ` (${source.url})` : '';
           return `${idx + 1}. ${sourceTitle}${sourceUrl}`;
         })
-        .join("\n"); // Each source on a new line
+        .join("\n---\n"); // Each source on a new line with a separator
     } else {
       sourcesText = "No sources available";
     }
 
     // Add main fact row with all information (excluding confidence)
     tableData.push([
-      `Claim: ${fact.claim}`, // Formatted Claim
-      `Status: ${fact.status?.toUpperCase() || 'N/A'}`, // Formatted Status
-      `Explanation: ${fact.explanation || 'No explanation provided.'}`, // Formatted Explanation
-      sourcesText, // Sources on separate lines
+      fact.claim, // Removed "Claim:" prefix
+      fact.status?.toUpperCase() || 'N/A', // Removed "Status:" prefix
+      fact.explanation || 'No explanation provided.', // Removed "Explanation:" prefix
+      sourcesText, // Sources on separate lines with separator
     ]);
   });
 

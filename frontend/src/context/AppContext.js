@@ -1,7 +1,7 @@
-import React, { createContext, useState, useCallback, useEffect } from "react"; // Import useEffect
+import React, { createContext, useState, useCallback, useEffect } from "react";
 import PropTypes from "prop-types";
 import { processYouTube, processText, processFile } from "../services/processingService";
-import { extractVideoId, validateYouTubeInput } from "../utils/validator"; // Import validator and extractVideoId
+import { extractVideoId, validateYouTubeInput } from "../utils/validator";
 
 export const AppContext = createContext();
 
@@ -36,24 +36,28 @@ export const AppProvider = ({ children }) => {
     }
     setResults(null); // Clear results when URL changes
     setShowResults(false);
-  }, [youtubeUrl]); // Dependency array: run when youtubeUrl changes
+  }, [youtubeUrl]);
 
   const handleTabChange = useCallback((event, newValue) => {
     setTabValue(newValue);
-    // Reset relevant states when switching tabs
-    setShowVideoPlayer(false);
-    setVideoId("");
     setResults(null); // Clear results on tab change
     setShowResults(false);
     setError(null); // Clear any error on tab change
-    // No need to clear youtubeUrl, textInput, selectedFile here
-    // as user might want to switch back and retain their input
+  }, []);
+
+  // New: Function to clear YouTube input and results
+  const clearYouTubeInputAndResults = useCallback(() => {
+    setYoutubeUrl("");
+    setResults(null);
+    setShowResults(false);
+    setShowVideoPlayer(false);
+    setVideoId("");
+    setError(null);
   }, []);
 
   const setters = { setVideoId, setShowVideoPlayer, setShowResults, setLoading, setResults, setError };
 
   const handleProcessYouTube = useCallback(() => {
-    // We don't need to extract videoId here again, as it's handled by useEffect
     processYouTube(youtubeUrl, setters);
   }, [youtubeUrl, setters]);
 
@@ -84,7 +88,7 @@ export const AppProvider = ({ children }) => {
     setSelectedFile,
     results,
     setResults,
-    loading,
+    loading, // Expose loading state
     setLoading,
     showResults,
     setShowResults,
@@ -100,6 +104,7 @@ export const AppProvider = ({ children }) => {
     handleProcessFile,
     handleFileSelect,
     clearError,
+    clearYouTubeInputAndResults, // Expose new clear function
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
