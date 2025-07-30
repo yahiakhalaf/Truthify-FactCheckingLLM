@@ -1,9 +1,12 @@
 import asyncio
 from typing import Dict, List, Any
-from urllib.parse import urlparse
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel
+from ddgs import DDGS
+from urllib.parse import urlparse, urlunparse
+from serpapi import GoogleSearch, BingSearch
+from datetime import timedelta
 
 # Module-level source scoring configuration
 SOURCE_SCORES = {
@@ -23,17 +26,17 @@ SOURCE_SCORES = {
 
 # Fact-checking prompt template
 FACT_CHECK_PROMPT = """
-You are an expert fact checker.
-The claim is in the language with code '{language}', so perform fact-checking and provide output in the same language.
-If you cannot process the language, provide the output in English.
+You are an expert fact checker tasked with evaluating the accuracy of a claim.
+The claim is provided in the language with code '{language}'. Perform fact-checking and provide output in the same language.
+Use the provided evidence snippets from reliable web sources to assess the claim's accuracy.
+If the evidence is insufficient, contradictory, or from unreliable sources, classify the claim as unverifiable.
 
-Given the factual claim below and the following evidence snippets from reliable web sources, determine if the claim is:
-- Correct
-- Incorrect
-- Unverifiable
+Given the factual claim below, determine if it is:
+- Correct: The claim is fully supported by the evidence.
+- Incorrect: The claim is contradicted by the evidence.
+- Unverifiable: The evidence is insufficient, Ascension to validate or refute the claim.
 
-Explain your reasoning briefly (in the transcript's language or English if unsupported, do not exceed 2 sentences).
-You must return exactly 3 sources that contributed to your fact-checking decision.
+Explain your reasoning in 1-2 sentences in the language with code '{language}', focusing on the evidence's relevance and reliability.
 
 Claim:
 {claim}
@@ -44,7 +47,7 @@ Evidence:
 Return your response in this exact JSON format:
 {{
   "status": "correct/incorrect/unverifiable",
-  "explanation": "Your 1-2 sentence explanation",
+  "explanation": "Your 1-2 sentence explanation"
 }}
 """
 
@@ -88,6 +91,7 @@ def get_language_string(key: str, language: str) -> str:
     }
     return strings.get(key, {}).get(language, strings[key]["en"]).format(error="{error}")
 
+
 def classify_and_score_source(url: str) -> tuple[str, float, str]:
     """Classify and score a source based on its URL."""
     if not url:
@@ -97,6 +101,7 @@ def classify_and_score_source(url: str) -> tuple[str, float, str]:
         if any(domain in url_lower for domain in info['domains']):
             return category, info['score'], info['tier']
     return "other", 2.0, "Other Sources"
+
 
 def calculate_relevance(claim: str, title: str, snippet: str) -> float:
     """Calculate relevance score for a source based on claim overlap."""
@@ -114,26 +119,7 @@ def calculate_relevance(claim: str, title: str, snippet: str) -> float:
 
 
 
-
-
-
-
-
-import asyncio
-from typing import List, Dict
-from ddgs import DDGS
-from urllib.parse import urlparse, urlunparse
-import asyncio
-from typing import List, Dict
-from ddgs import DDGS
-from serpapi import GoogleSearch
-from urllib.parse import urlparse, urlunparse
-import asyncio
-from urllib.parse import urlparse, urlunparse
-from serpapi import GoogleSearch, BingSearch
-from typing import List, Dict
-
-async def search_parallel(claim: str,queries: List[str],language: str = "en",max_results: int = 5,serpapi_key: str = "") -> List[Dict]:
+async def search_parallel(claim: str,queries: List[str],language: str = "en",max_results: int = 8,serpapi_key: str = "") -> List[Dict]:
     if max_results < 1:
         raise ValueError("max_results must be a positive integer")
 
@@ -153,6 +139,7 @@ async def search_parallel(claim: str,queries: List[str],language: str = "en",max
         except Exception:
             return url
 
+
     async def search_duckduckgo(query: str) -> List[Dict]:
         """Perform a DuckDuckGo search for the given query."""
         lang_code = {
@@ -171,6 +158,7 @@ async def search_parallel(claim: str,queries: List[str],language: str = "en",max
         except Exception as e:
             print(f"[ERROR] DuckDuckGo search failed for query '{query}': {e}")
             return []
+
 
     async def search_serpapi_engine(query: str, engine: str, search_class) -> List[Dict]:
         """Perform a search using SerpApi for a specific search engine."""
@@ -197,6 +185,7 @@ async def search_parallel(claim: str,queries: List[str],language: str = "en",max
         except Exception as e:
             print(f"[ERROR] SerpApi {engine} search failed for query '{query}': {e}")
             return []
+
 
     async def search_serpapi(query: str) -> List[Dict]:
         """Perform parallel searches using SerpApi on Google and Bing."""
@@ -229,10 +218,6 @@ async def search_parallel(claim: str,queries: List[str],language: str = "en",max
 
     print(f"[DEBUG] Found {len(all_results)} unique results after deduplication")
     return all_results
-
-
-
-
 
 
 def arrange_evidence(raw_results: List[Dict], claim: str, language: str) -> tuple[str, List[Dict], int]:
@@ -389,21 +374,15 @@ async def verify_claim(claim: str, evidence_text: str, top_sources: List[Dict], 
             "sources": [{"title": get_language_string("error", language), "url": ""}] * 3
         }
     
-from datetime import timedelta
-
-def format_timestamp(start: float) -> str:
-    td = timedelta(seconds=start)
-    return f"[{str(td).split('.')[0]}]"
 
 
 async def process_claim(claim_dict: Dict[str, Any], llm: BaseLanguageModel, language: str, SERPAPI_KEY: str) -> Dict:
     """Main function to process a single claim."""
     claim = claim_dict["claim"]
-    start = claim_dict["start"]
+    timestamp = claim_dict["start"]
     queries = claim_dict.get("queries", [])
-    timestamp = format_timestamp(start)
 
-    if not claim or len(claim.strip()) < 8:
+    if not claim or len(claim.strip()) < 7:
         return {
             "timestamp": timestamp,
             "claim": claim,

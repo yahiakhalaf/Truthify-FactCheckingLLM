@@ -9,7 +9,7 @@ from decimal import Decimal, ROUND_DOWN
 
 
 class ClaimItem(BaseModel):
-    start: float
+    start: int
     "Start time of the claim in seconds (from the first relevant segment)"
     claim: str
     "The full factual claim text reconstructed from one or more segments"
@@ -27,7 +27,7 @@ class RateLimiter:
     def __init__(self, requests_per_minute: int):
         if requests_per_minute <= 0:
             raise ValueError("requests_per_minute must be positive")
-        self.rate = Decimal(str(requests_per_minute)) / Decimal('60.0')  # Requests per second
+        self.rate = Decimal(str(requests_per_minute)) / Decimal('60.0')  
         self.capacity = requests_per_minute
         self.tokens = Decimal(str(self.capacity))
         self.last_refill = time.monotonic()
@@ -49,7 +49,6 @@ class RateLimiter:
             self.tokens -= 1
 
 
-# Language mapping for more explicit instructions
 LANGUAGE_NAMES = {
     'en': 'English',
     'ar': 'Arabic',
@@ -58,6 +57,111 @@ LANGUAGE_NAMES = {
 def get_language_name(language_code: str) -> str:
     """Get the full language name from language code."""
     return LANGUAGE_NAMES.get(language_code.lower(), f"language with code '{language_code}'")
+
+
+def format_transcript(chunk, language_name):
+
+    is_rtl = language_name.lower() in ["arabic", "persian", "hebrew"]
+    if is_rtl:
+        return "\n".join(f"{seg['text']} [ثانية {seg['start']}]" for seg in chunk)
+    else:
+        return "\n".join(f"[{seg['start']} sec] {seg['text']}" for seg in chunk)
+    
+
+prompt_template = """
+You are an assistant to a fact-checker tasked with extracting **factual claims** from timestamped transcript segments and generating search queries for each claim. Your goal is to produce a list of specific, verifiable, and fully decontextualized claims that can be independently verified using reliable sources, along with search queries to help verify each claim.
+
+**CRITICAL LANGUAGE REQUIREMENT**: The transcript is in {language_name} (language code: '{language}'). You MUST extract and return all claims in the EXACT SAME LANGUAGE as the original transcript. Do NOT translate, paraphrase in another language, or mix languages. Preserve the original language, terminology, names, and expressions exactly as they appear in the transcript.
+
+**SEARCH QUERY GENERATION**: For each extracted claim, you must generate exactly 2 different search queries in {language_name} that would help verify the claim. These queries should:
+1. Be concise and focused (3-10 words each)
+2. Use different phrasings and keywords to maximize search coverage
+3. Focus on the key factual elements that can be verified
+4. Be suitable for web search engines
+5. Target reliable sources like news articles, academic papers, official records, etc.
+
+Each transcript segment is provided with a numeric timestamp in seconds and a text snippet. Note:
+- Segments may not be complete sentences or claims.
+- Factual claims may span multiple consecutive segments.
+- A factual claim is a statement that can be objectively verified as true or false based on empirical evidence (e.g., historical facts, dates, names, statistics).
+- Claims must be **entailed** by the transcript (if the transcript is true, the claim must be true).
+- Claims must be **fully decontextualized** (understandable in isolation without needing additional context).
+- Claims must capture all **verifiable content** while excluding unverifiable content (e.g., opinions, speculations, recommendations).
+- Identify and resolve **referential ambiguity** (e.g., unclear pronouns, acronyms) and **structural ambiguity** (e.g., multiple interpretations) using the provided context (all segments in the input).
+- If a segment or claim contains unresolvable ambiguity, exclude it from the output.
+- Claims must be complete, declarative sentences in the original language.
+- **Decompose** each clarified segment into discrete, specific, and verifiable propositions, retaining critical context.
+
+### Language-Specific Instructions for Claims:
+- Maintain original grammar, syntax, and sentence structure of {language_name}
+- Preserve proper nouns, technical terms, and specialized vocabulary in their original form
+- Keep cultural references, idioms, and expressions in the original language
+- Maintain the original writing direction and script (if applicable)
+- Do not anglicize names, places, or terms that appear in the original language
+
+### Search Query Guidelines:
+- All search queries must be in {language_name} for maximum search engine compatibility
+- Each query should approach the verification from a different angle
+- Include specific names, dates, locations, or numbers when relevant
+- Use synonyms and alternative phrasings across the two queries
+- Make queries specific enough to find relevant sources but broad enough to capture various perspectives
+
+### Instructions
+1. **Selection**: For each segment or group of consecutive segments, determine if it contains at least one specific and verifiable proposition. Exclude:
+   - Non-declarative statements (e.g., questions, recommendations).
+   - Preambles or introductory phrases (e.g., "Here are some examples:").
+   - Statements missing key information (e.g., incomplete or vague).
+   - Statements about a lack of information (e.g., "The dataset does not contain X").
+2. **Disambiguation**:
+   - Check for **referential ambiguity** (e.g., unclear pronouns like "he," undefined acronyms). Resolve using the context (all segments). If unresolvable, exclude the segment.
+   - Check for **structural ambiguity** (e.g., a sentence with multiple interpretations). List possible interpretations and determine if the context clearly supports one. If not, exclude the segment.
+   - Output a clarified version of the segment if all ambiguities are resolved, maintaining the original language.
+3. **Decomposition**:
+   - Break down each clarified segment into discrete, verifiable, and decontextualized propositions.
+   - Ensure each proposition is specific, verifiable, and retains necessary context (e.g., who said or did something).
+   - Each proposition must be a complete, declarative sentence in {language_name}.
+4. **Search Query Generation**:
+   - For each extracted claim, create exactly 2 search queries in {language_name}
+   - Focus on the most verifiable aspects of the claim
+   - Use different keywords and phrasings for each query
+   - Keep queries concise but specific
+5. **Output**:
+   - Assign each claim the **start time** of the first segment contributing to it.
+   - Return only claims that are specific, verifiable, and fully decontextualized.
+   - All claims and queries must be in {language_name} exactly as they would naturally appear in that language.
+   - All search queries must be in {language_name}.
+   - If no verifiable claims are found, return an empty list.
+
+### Examples of Good Search Queries:
+- **For Arabic claim**: "ألبرت أينشتاين وُلد في 1879"
+  - "تاريخ ميلاد ألبرت أينشتاين 1879"
+  - "أينشتاين وُلد متى"
+
+- **For English claim**: "Albert Einstein was born in 1879"
+  - "Albert Einstein birth year 1879"
+  - "Einstein born when date"
+
+### Transcript
+{transcript}
+
+Return your output strictly as JSON with this format:
+{{
+  "language": "{language}",
+  "claims": [
+    {{
+      "start": <start_time_in_seconds>,
+      "claim": "<full factual claim in {language_name}>",
+      "queries": [
+        "<search query 1 in {language_name}>",
+        "<search query 2 in {language_name}>"
+      ]
+    }},
+    ...
+  ]
+}}
+
+Remember: ALL claims and queries must be in {language_name}. Do not translate the claims or change their language under any circumstances.
+"""
 
 
 async def extract_claims_in_parallel(
@@ -115,98 +219,6 @@ async def extract_claims_in_parallel(
     # Get language name for more explicit instructions
     language_name = get_language_name(language)
 
-    # Enhanced prompt template with explicit language preservation instructions and search query generation
-    prompt_template = """
-You are an assistant to a fact-checker tasked with extracting **factual claims** from timestamped transcript segments and generating search queries for each claim. Your goal is to produce a list of specific, verifiable, and fully decontextualized claims that can be independently verified using reliable sources, along with search queries to help verify each claim.
-
-**CRITICAL LANGUAGE REQUIREMENT**: The transcript is in {language_name} (language code: '{language}'). You MUST extract and return all claims in the EXACT SAME LANGUAGE as the original transcript. Do NOT translate, paraphrase in another language, or mix languages. Preserve the original language, terminology, names, and expressions exactly as they appear in the transcript.
-
-**SEARCH QUERY GENERATION**: For each extracted claim, you must generate exactly 2 different search queries in {language_name} that would help verify the claim. These queries should:
-1. Be concise and focused (3-8 words each)
-2. Use different phrasings and keywords to maximize search coverage
-3. Focus on the key factual elements that can be verified
-4. Be suitable for web search engines
-5. Target reliable sources like news articles, academic papers, official records, etc.
-
-Each transcript segment is provided with a timestamp in the format [MM:SS] and a text snippet. Note:
-- Segments may not be complete sentences or claims.
-- Factual claims may span multiple consecutive segments.
-- A factual claim is a statement that can be objectively verified as true or false based on empirical evidence (e.g., historical facts, dates, names, statistics).
-- Claims must be **entailed** by the transcript (if the transcript is true, the claim must be true).
-- Claims must be **fully decontextualized** (understandable in isolation without needing additional context).
-- Claims must capture all **verifiable content** while excluding unverifiable content (e.g., opinions, speculations, recommendations).
-- Identify and resolve **referential ambiguity** (e.g., unclear pronouns, acronyms) and **structural ambiguity** (e.g., multiple interpretations) using the provided context (all segments in the input).
-- If a segment or claim contains unresolvable ambiguity, exclude it from the output.
-- Claims must be complete, declarative sentences in the original language.
-- **Decompose** each clarified segment into discrete, specific, and verifiable propositions, retaining critical context (e.g., if the segment states "John said X," the claim must include "John said").
-
-### Language-Specific Instructions for Claims:
-- Maintain original grammar, syntax, and sentence structure of {language_name}
-- Preserve proper nouns, technical terms, and specialized vocabulary in their original form
-- Keep cultural references, idioms, and expressions in the original language
-- Maintain the original writing direction and script (if applicable)
-- Do not anglicize names, places, or terms that appear in the original language
-
-### Search Query Guidelines:
-- All search queries must be in {language_name} for maximum search engine compatibility
-- Each query should approach the verification from a different angle
-- Include specific names, dates, locations, or numbers when relevant
-- Use synonyms and alternative phrasings across the two queries
-- Make queries specific enough to find relevant sources but broad enough to capture various perspectives
-
-### Instructions
-1. **Selection**: For each segment or group of consecutive segments, determine if it contains at least one specific and verifiable proposition. Exclude:
-   - Non-declarative statements (e.g., questions, recommendations).
-   - Preambles or introductory phrases (e.g., "Here are some examples:").
-   - Statements missing key information (e.g., incomplete or vague).
-   - Statements about a lack of information (e.g., "The dataset does not contain X").
-2. **Disambiguation**:
-   - Check for **referential ambiguity** (e.g., unclear pronouns like "he," undefined acronyms). Resolve using the context (all segments). If unresolvable, exclude the segment.
-   - Check for **structural ambiguity** (e.g., a sentence with multiple interpretations). List possible interpretations and determine if the context clearly supports one. If not, exclude the segment.
-   - Output a clarified version of the segment if all ambiguities are resolved, maintaining the original language.
-3. **Decomposition**:
-   - Break down each clarified segment into discrete, verifiable, and decontextualized propositions.
-   - Ensure each proposition is specific, verifiable, and retains necessary context (e.g., who said or did something).
-   - Each proposition must be a complete, declarative sentence in {language_name}.
-4. **Search Query Generation**:
-   - For each extracted claim, create exactly 2 search queries in {language_name}
-   - Focus on the most verifiable aspects of the claim
-   - Use different keywords and phrasings for each query
-   - Keep queries concise but specific
-5. **Output**:
-   - Assign each claim the **start time** of the first segment contributing to it.
-   - Return only claims that are specific, verifiable, and fully decontextualized.
-   - All claims and queries must be in {language_name} exactly as they would naturally appear in that language.
-   - All search queries must be in {language_name}.
-   - If no verifiable claims are found, return an empty list.
-
-### Examples of Good Search Queries:
-For a claim about "Albert Einstein was born in 1879":
-- "Albert Einstein birth year 1879"
-- "Einstein born when date"
-
-### Transcript
-{transcript}
-
-Return your output strictly as JSON with this format:
-{{
-  "language": "{language}",
-  "claims": [
-    {{
-      "start": <start_time_in_seconds>,
-      "claim": "<full factual claim in {language_name}>",
-      "queries": [
-        "<search query 1 in {language_name}>",
-        "<search query 2 in {language_name}>"
-      ]
-    }},
-    ...
-  ]
-}}
-
-Remember: ALL claims and queries must be in {language_name}. Do not translate the claims or change their language under any circumstances.
-"""
-
     prompt = PromptTemplate(
         input_variables=["transcript", "language", "language_name"],
         template=prompt_template,
@@ -229,10 +241,9 @@ Remember: ALL claims and queries must be in {language_name}. Do not translate th
                 # Record request timestamp
                 request_counter += 1
                 request_timestamps[request_counter] = time.time()
-                formatted_transcript = "\n".join(
-                    f"[{int(seg['start'] // 60):02d}:{int(seg['start'] % 60):02d}] {seg['text']}" 
-                    for seg in chunk
-                )
+                formatted_transcript = format_transcript(chunk,language_name)
+
+                
                 async with asyncio.timeout(timeout_per_chunk):
                     result = await chain.ainvoke({
                         "transcript": formatted_transcript,

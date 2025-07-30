@@ -72,7 +72,7 @@ def extract_from_url_withtimestamps(url: str) -> Tuple[List[Dict[str, Any]], str
                 continue
 
             transcript_output.append({
-                "start": round(entry.start, 2),
+                "start": int(entry.start),
                 "text": text
             })
 

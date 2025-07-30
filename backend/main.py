@@ -2,14 +2,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
-import src.get_text as get_text
-import src.extract_claims as extract_claims
-import src.check_claims as check_claims
+from src.get_text import extract_from_url_withtimestamps,TranscriptsDisabled,NoTranscriptFound
+from src.extract_claims import extract_claims_in_parallel
+from src.check_claims import process_claim
 import os
 from dotenv import load_dotenv
+from datetime import timedelta
 import time
-load_dotenv()
 from langchain_google_genai import ChatGoogleGenerativeAI
+load_dotenv()
 
 GEMINI_API_KEY = "AIzaSyAtjZdYeY6WREgNAM8WBIrolseiFt2jDso"   
 app = FastAPI(title="TRUSTIFY Backend")
@@ -35,7 +36,7 @@ llm = ChatGoogleGenerativeAI(
         api_key=GEMINI_API_KEY
 )
 
-SERP_API_KEY = os.getenv("SERP_API_KEY")  # Ensure this is set in your environment
+SERP_API_KEY ="2c96abc18135e6cf440eb5c7a7aaf13f06d7ee8d1d8e0566cc6a5e245337410c"  
 
 # Rate limiting setup
 REQUESTS_PER_MINUTE = 9
@@ -47,7 +48,7 @@ async def rate_limited_process_claim(claim, llm, language, serp_api_key):
     async with semaphore:
         # Record timestamp for this request
         request_timestamp = time.time()
-        result = await check_claims.process_claim(claim, llm, language, serp_api_key)
+        result = await process_claim(claim, llm, language, serp_api_key)
         return result, request_timestamp
 
 async def process_claims_with_dynamic_rate_limit(claims, llm, language, serp_api_key, initial_timestamps):
@@ -91,23 +92,38 @@ async def process_claims_with_dynamic_rate_limit(claims, llm, language, serp_api
                 # Keep only the most recent timestamps to avoid memory growth
                 if len(request_timestamps) > REQUESTS_PER_MINUTE:
                     request_timestamps = request_timestamps[-REQUESTS_PER_MINUTE:]
-
+    
     return results
+
+
+
+def format_seconds_to_string(seconds_float: float) -> str:
+ 
+    td = timedelta(seconds=seconds_float)
+    total_seconds = int(td.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"[{hours:02d}:{minutes:02d}:{seconds:02d}]"
+
 
 @app.post("/youtube")
 async def process_youtube(request: YouTubeRequest):
     """Process a YouTube URL and return fact-checking results."""
     try:
-        transcript, language = get_text.extract_from_url_withtimestamps(request.url)
-        claims, language, extract_timestamps = await extract_claims.extract_claims_in_parallel(transcript, llm, language)
+        transcript, language = extract_from_url_withtimestamps(request.url)
+        claims, language, extract_timestamps = await extract_claims_in_parallel(transcript, llm, language)
         # Process claims with dynamic rate limiting
         results = await process_claims_with_dynamic_rate_limit(
             claims, llm, language, SERP_API_KEY, list(extract_timestamps.values())
         )
-        return {"facts": results}
-    except get_text.TranscriptsDisabled:
+        sorted_results = sorted(results, key=lambda x: x.get('timestamp'))
+        for item in sorted_results:
+            item['timestamp'] = format_seconds_to_string(item['timestamp'])
+        return {"facts": sorted_results}
+    except TranscriptsDisabled:
         raise HTTPException(status_code=400, detail="Transcripts are disabled for this video")
-    except get_text.NoTranscriptFound:
+    except NoTranscriptFound:
         raise HTTPException(status_code=400, detail="No transcript available for this video")
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
